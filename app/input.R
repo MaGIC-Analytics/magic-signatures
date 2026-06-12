@@ -1,6 +1,11 @@
 # ─── Utilities ─────────────────────────────────────────────────────────────────
 
-`%||%` <- function(a, b) if (!is.null(a) && length(a) > 0 && all(a != "")) a else b
+`%||%` <- function(a, b) {
+    if (is.null(a)) return(b)
+    if (length(a) == 0) return(b)
+    if (length(a) == 1 && is.character(a) && !nzchar(a)) return(b)
+    a
+}
 
 read_delim_auto <- function(path) {
     ext <- tolower(tools::file_ext(path))
@@ -181,6 +186,22 @@ ProcessedMatrix <- reactive({
     m <- as.matrix(mat[, ..num_cols])
     rownames(m) <- make.unique(gene_names)
     storage.mode(m) <- "numeric"
+
+    # Restrict to samples present in BOTH the matrix and the metadata (shared set,
+    # in matrix-column order). Matches the qc/deg idiom and keeps NA-metadata
+    # samples out of scoring/annotations instead of showing them as an "NA" group.
+    meta_raw <- MetadataReactive()
+    if (!is.null(meta_raw) && ncol(meta_raw) >= 1) {
+        sample_ids <- as.character(meta_raw[[colnames(meta_raw)[1]]])
+        shared <- intersect(colnames(m), sample_ids)
+        shiny::validate(need(length(shared) >= 1,
+            "No samples are shared between the matrix columns and the metadata sample names."))
+        if (length(shared) < ncol(m)) {
+            showNotification(sprintf("Using %d of %d matrix samples that are present in the metadata.",
+                length(shared), ncol(m)), type='warning', duration=8)
+        }
+        m <- m[, shared, drop=FALSE]
+    }
     m
 })
 
